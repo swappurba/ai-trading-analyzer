@@ -143,6 +143,8 @@ if "idx_prices_ts" not in st.session_state:
     st.session_state.idx_prices_ts = 0
 if "idx_active_ticker" not in st.session_state:
     st.session_state.idx_active_ticker = ""
+if "idx_open_popup" not in st.session_state:
+    st.session_state.idx_open_popup = False
 if "last_analyzed" not in st.session_state:
     st.session_state.last_analyzed = ""
 if "last_timeframe" not in st.session_state:
@@ -707,8 +709,8 @@ with tabs[0]:
                 if st.button(f"{_s['code']}{_pct_txt}", key=f"bd_{_s['ticker']}",
                              use_container_width=True, type=_btn_type):
                     st.session_state["idx_active_ticker"] = _s["ticker"]
-                    # Langsung trigger analisis tanpa klik tombol tambahan
                     st.session_state["_idx_pending_ticker"] = _s["ticker"]
+                    st.session_state["idx_open_popup"] = True
                     st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -718,22 +720,22 @@ with tabs[0]:
     if not _active_ticker and st.session_state.last_analyzed in [s["ticker"] for s in _display_list]:
         _active_ticker = st.session_state.last_analyzed
 
-    # ════════════ PANEL ANALISIS LENGKAP (muncul di bawah papan) ════════════
-    if _active_ticker:
-        st.markdown("---")
-        _act_stock = next((s for s in _display_list if s["ticker"]==_active_ticker), None)
-        _act_price_data = _all_prices.get(_active_ticker, {})
+    # ════════════ POPUP DIALOG ANALISIS ════════════
+    @st.dialog("📊 Analisis Saham", width="large")
+    def _show_analysis_popup(active_ticker, all_prices, display_list):
+        _act_stock      = next((s for s in display_list if s["ticker"]==active_ticker), None)
+        _act_price_data = all_prices.get(active_ticker, {})
         _act_price = _act_price_data.get("price")
         _act_pct   = _act_price_data.get("pct_change", 0) or 0
         _act_chg   = _act_price_data.get("change", 0) or 0
         _act_high  = _act_price_data.get("high")
         _act_low   = _act_price_data.get("low")
         _act_vol   = _act_price_data.get("volume", 0) or 0
-        _act_code  = _active_ticker.replace(".JK","")
+        _act_code  = active_ticker.replace(".JK","")
         _act_color = "#26A69A" if _act_pct>=0 else "#EF5350"
         _act_arrow = "▲" if _act_pct>=0 else "▼"
 
-        # Header analisis
+        # Header harga di popup
         _ah1, _ah2, _ah3 = st.columns([3, 1, 1])
         with _ah1:
             st.markdown(f"""
@@ -742,28 +744,29 @@ with tabs[0]:
                 <span style="font-size:0.85rem;background:#21262D;color:#8B949E;padding:3px 10px;border-radius:12px">{_act_stock['sector'] if _act_stock else '—'}</span>
                 <span style="font-size:1.3rem;font-weight:700;color:{_act_color}">
                     {'Rp {:,.0f}'.format(_act_price) if _act_price else '—'}
-                    {_act_arrow}{abs(_act_pct):.2f}% ({_act_chg:+.0f})
+                    &nbsp;{_act_arrow}{abs(_act_pct):.2f}% ({_act_chg:+.0f})
                 </span>
                 <span style="font-size:0.78rem;color:#555">
                     H:{'Rp {:,.0f}'.format(_act_high) if _act_high else '—'}
-                    L:{'Rp {:,.0f}'.format(_act_low) if _act_low else '—'}
-                    Vol:{'{:.1f}M'.format(_act_vol/1e6) if _act_vol>=1e6 else str(_act_vol)}
+                    &nbsp;L:{'Rp {:,.0f}'.format(_act_low) if _act_low else '—'}
+                    &nbsp;Vol:{'{:.1f}M'.format(_act_vol/1e6) if _act_vol>=1e6 else str(_act_vol)}
                 </span>
             </div>
             """, unsafe_allow_html=True)
         with _ah2:
-            _need_run = (st.session_state.last_analyzed != _active_ticker or st.session_state.df.empty)
-            if st.button("🔄 Refresh", key="idx_reanalyze2", use_container_width=True):
-                st.session_state["_idx_pending_ticker"] = _active_ticker
+            if st.button("🔄 Refresh", key="dlg_refresh", use_container_width=True):
+                st.session_state["_idx_pending_ticker"] = active_ticker
+                st.session_state["idx_open_popup"] = True
                 st.rerun()
         with _ah3:
-            if st.button("🤖 AI Analisis", type="primary", use_container_width=True, key="idx_run_btn"):
-                st.session_state["_idx_pending_ticker"] = _active_ticker
+            if st.button("🤖 AI Analisis", type="primary", use_container_width=True, key="dlg_ai"):
+                st.session_state["_idx_pending_ticker"] = active_ticker
                 st.session_state["_trigger_ai"] = True
+                st.session_state["idx_open_popup"] = True
                 st.rerun()
 
+        _need_run = (st.session_state.last_analyzed != active_ticker or st.session_state.df.empty)
         if _need_run:
-            # Auto-trigger analisis (sudah di-set saat tombol saham diklik)
             st.info(f"⏳ Memuat analisis **{_act_code}**...")
         else:
             # ── Data dari session_state ──
@@ -942,13 +945,20 @@ with tabs[0]:
                     except Exception as _e:
                         st.warning(f"Monte Carlo error: {_e}")
 
-    elif not _active_ticker:
+    # ── Tampilkan popup analisis otomatis ──
+    if _active_ticker and st.session_state.get("idx_open_popup", False):
+        st.session_state["idx_open_popup"] = False
+        _show_analysis_popup(_active_ticker, _all_prices, _display_list)
+    elif _active_ticker and st.session_state.last_analyzed == _active_ticker and not st.session_state.df.empty:
+        _show_analysis_popup(_active_ticker, _all_prices, _display_list)
+
+    if not _active_ticker:
         st.markdown("""
         <div style="background:#0D1117;border:1px dashed #30363D;border-radius:12px;
             padding:40px;text-align:center;margin-top:8px">
             <div style="font-size:2rem;margin-bottom:10px">👆</div>
-            <div style="color:#C9D1D9;font-size:1.1rem;font-weight:600">Klik nama saham di atas untuk melihat analisis lengkap</div>
-            <div style="color:#8B949E;font-size:0.85rem;margin-top:6px">Semua indikator — Teknikal · SMC · Fibonacci · Risk · Chart — akan tampil di sini</div>
+            <div style="color:#C9D1D9;font-size:1.1rem;font-weight:600">Klik saham di atas untuk melihat analisis lengkap</div>
+            <div style="color:#8B949E;font-size:0.85rem;margin-top:6px">Popup analisis otomatis muncul — Teknikal · SMC · Fibonacci · Risk · Chart</div>
         </div>
         """, unsafe_allow_html=True)
 
