@@ -26,6 +26,7 @@ except ImportError:
 from config import (
     POPULAR_IDX_STOCKS, POPULAR_GLOBAL_STOCKS, TIMEFRAMES, INTERVALS,
     SECTOR_MAP, INDONESIAN_INDICES, GLOBAL_INDICES, COMMODITIES, CURRENCIES,
+    fetch_all_idx_stocks,
 )
 from modules.data_fetcher import (
     get_stock_data, get_stock_info, get_financials,
@@ -587,9 +588,15 @@ with tabs[0]:
     st.session_state["_top_period"]   = _period
     st.session_state["_top_interval"] = _iv
 
+    # Ambil daftar saham lengkap dari API IDX (cache di session)
+    if "idx_full_list" not in st.session_state or not st.session_state.idx_full_list:
+        with st.spinner("📋 Memuat daftar lengkap saham IDX..."):
+            st.session_state.idx_full_list = fetch_all_idx_stocks()
+    _idx_stock_list = st.session_state.idx_full_list or POPULAR_IDX_STOCKS
+
     if _refresh_dash or _cache_stale or not st.session_state.idx_prices_cache:
-        with st.spinner("⏳ Mengambil harga semua saham IDX..."):
-            _all_prices = batch_live_prices(POPULAR_IDX_STOCKS, max_workers=14)
+        with st.spinner(f"⏳ Mengambil harga {len(_idx_stock_list):,} saham IDX..."):
+            _all_prices = batch_live_prices(_idx_stock_list, max_workers=20)
         st.session_state.idx_prices_cache = _all_prices
         st.session_state.idx_prices_ts = time.time()
     else:
@@ -597,7 +604,7 @@ with tabs[0]:
 
     # Build stock list
     _all_stocks = []
-    for _tk in POPULAR_IDX_STOCKS:
+    for _tk in _idx_stock_list:
         _pd2 = _all_prices.get(_tk, {})
         _all_stocks.append({
             "ticker": _tk, "code": _tk.replace(".JK",""),
