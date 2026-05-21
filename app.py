@@ -700,13 +700,15 @@ with tabs[0]:
                     </div>
                     """, unsafe_allow_html=True)
 
-                # Tombol klik (di bawah kartu, menyatu)
+                # Tombol klik — langsung trigger analisis otomatis
                 _is_sel   = (_active_tk == _s["ticker"])
                 _btn_type = "primary" if _is_sel else "secondary"
                 _pct_txt  = f" {_pct:+.1f}%" if _p else ""
                 if st.button(f"{_s['code']}{_pct_txt}", key=f"bd_{_s['ticker']}",
                              use_container_width=True, type=_btn_type):
                     st.session_state["idx_active_ticker"] = _s["ticker"]
+                    # Langsung trigger analisis tanpa klik tombol tambahan
+                    st.session_state["_idx_pending_ticker"] = _s["ticker"]
                     st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -751,18 +753,18 @@ with tabs[0]:
             """, unsafe_allow_html=True)
         with _ah2:
             _need_run = (st.session_state.last_analyzed != _active_ticker or st.session_state.df.empty)
-            if not _need_run:
-                if st.button("🔄 Update", key="idx_reanalyze2", use_container_width=True):
-                    st.session_state["_idx_pending_ticker"] = _active_ticker
-                    st.rerun()
-        with _ah3:
-            if st.button(f"🔍 {'Analisis' if _need_run else 'Refresh'} {_act_code}", type="primary", use_container_width=True, key="idx_run_btn"):
+            if st.button("🔄 Refresh", key="idx_reanalyze2", use_container_width=True):
                 st.session_state["_idx_pending_ticker"] = _active_ticker
+                st.rerun()
+        with _ah3:
+            if st.button("🤖 AI Analisis", type="primary", use_container_width=True, key="idx_run_btn"):
+                st.session_state["_idx_pending_ticker"] = _active_ticker
+                st.session_state["_trigger_ai"] = True
                 st.rerun()
 
         if _need_run:
-            # Tampilkan harga saja, minta klik analisis
-            st.info(f"📊 Klik **🔍 Analisis {_act_code}** untuk memuat semua indikator teknikal, SMC, Fibonacci, Risk, dan chart.")
+            # Auto-trigger analisis (sudah di-set saat tombol saham diklik)
+            st.info(f"⏳ Memuat analisis **{_act_code}**...")
         else:
             # ── Data dari session_state ──
             _d_ticker  = st.session_state.ticker
