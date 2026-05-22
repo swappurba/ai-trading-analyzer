@@ -523,16 +523,9 @@ kelly       = st.session_state.get("kelly", {})
 # ── Main Tabs ─────────────────────────────────────────────────────────────────
 tabs = st.tabs([
     "🇮🇩 IDX Dashboard",
-    "⚡ Live" if live_mode else "⚡ Live (Off)",
-    "📊 Teknikal",
-    "🏦 SMC",
-    "📐 Advanced TA",
-    "📉 Risk & Quant",
-    "💰 Fundamental",
-    "📰 Berita & Sentimen",
-    "🌍 Makro Ekonomi",
-    "🤖 AI Analysis",
     "🗺️ Pasar Global",
+    "🌍 Makro Ekonomi",
+    "📰 Berita & Sentimen",
 ])
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -808,15 +801,24 @@ with tabs[0]:
             </div>
             """, unsafe_allow_html=True)
 
-            # ── CHART CANDLESTICK ──
-            with st.expander("📈 Chart Candlestick", expanded=True):
+            # ── SUB-TABS ANALISIS LENGKAP ──
+            _ptab1, _ptab2, _ptab3, _ptab4, _ptab5, _ptab6 = st.tabs([
+                "📈 Chart & Teknikal",
+                "🏦 SMC & Struktur",
+                "📐 Advanced TA",
+                "📉 Risk & Quant",
+                "💰 Fundamental",
+                "🤖 AI Analysis",
+            ])
+
+            with _ptab1:
                 try:
                     _fig_c = plot_candlestick_chart(_d_df, _d_ticker, show_ichimoku=False)
                     st.plotly_chart(_fig_c, use_container_width=True, config={"displayModeBar": False})
                 except Exception as _ce:
                     st.warning(f"Chart error: {_ce}")
 
-            # ── 3 KOLOM INDIKATOR ──
+            # ── 3 KOLOM INDIKATOR (masih di tab Chart & Teknikal) ──
             _ic1, _ic2, _ic3 = st.columns(3)
 
             with _ic1:
@@ -916,34 +918,131 @@ with tabs[0]:
                     st.markdown(f"<div style='font-size:0.75rem;display:flex;justify-content:space-between;padding-top:3px'><span style='color:#555'>POC</span><span style='color:#FF9800;font-weight:700'>Rp {_d_vp['poc']:,.0f}</span></div>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown("---")
+            with _ptab2:
+                # SMC Chart
+                try:
+                    _fig_smc = plot_smc_chart(_d_df, _d_ticker, _d_obs, _d_fvgs, _d_bos, _d_pd_zone, _d_liq)
+                    st.plotly_chart(_fig_smc, use_container_width=True, config={"displayModeBar":False})
+                except Exception as _e:
+                    st.warning(f"SMC Chart error: {_e}")
+                # Detail SMC
+                _sc1, _sc2 = st.columns(2)
+                with _sc1:
+                    st.markdown("**Order Blocks**")
+                    for _ob in _d_obs[:5]:
+                        _oc = "#26A69A" if _ob.get("type")=="bullish" else "#EF5350"
+                        st.markdown(f"<div style='font-size:0.8rem;color:{_oc}'>● {_ob.get('type','').upper()} @ Rp {_ob.get('price',0):,.0f}</div>", unsafe_allow_html=True)
+                with _sc2:
+                    st.markdown("**FVG & BOS/CHoCH**")
+                    for _fv in _d_fvgs[:5]:
+                        st.markdown(f"<div style='font-size:0.8rem;color:#FF9800'>⬡ FVG {_fv.get('type','')} @ Rp {_fv.get('price',0):,.0f}</div>", unsafe_allow_html=True)
+                    for _bv in _d_bos[:3]:
+                        _bc = "#26A69A" if "BOS" in str(_bv.get("type","")) else "#9C27B0"
+                        st.markdown(f"<div style='font-size:0.8rem;color:{_bc}'>▸ {_bv.get('type','')} @ bar {_bv.get('index',0)}</div>", unsafe_allow_html=True)
 
-            # ── CHARTS ──
-            _ch1, _ch2 = st.columns(2)
-            with _ch1:
-                with st.expander("🏦 SMC Chart", expanded=False):
-                    try:
-                        _fig_smc = plot_smc_chart(_d_df, _d_ticker, _d_obs, _d_fvgs, _d_bos, _d_pd_zone, _d_liq)
-                        st.plotly_chart(_fig_smc, use_container_width=True, config={"displayModeBar":False})
-                    except Exception as _e:
-                        st.warning(f"SMC Chart error: {_e}")
-            with _ch2:
-                with st.expander("🎲 Monte Carlo (30 hari)", expanded=False):
-                    try:
-                        _mc_sim = _d_mc.get("simulations") if isinstance(_d_mc, dict) else None
-                        _mc_ok  = isinstance(_mc_sim, pd.DataFrame) and not _mc_sim.empty
-                        if _mc_ok:
-                            _fig_mc = plot_monte_carlo(_d_mc, _d_ticker)
-                            st.plotly_chart(_fig_mc, use_container_width=True, config={"displayModeBar":False})
-                            _mc_m  = _d_mc.get("percentile_50")
-                            _mc_bu = _d_mc.get("percentile_95")
-                            _mc_be = _d_mc.get("percentile_5")
-                            if _mc_m:
-                                st.caption(f"Bear: Rp {_mc_be:,.0f} · Median: Rp {_mc_m:,.0f} · Bull: Rp {_mc_bu:,.0f}")
-                        else:
-                            st.info("Data Monte Carlo tidak tersedia")
-                    except Exception as _e:
-                        st.warning(f"Monte Carlo error: {_e}")
+            with _ptab3:
+                # Advanced TA — Fibonacci + Volume Profile
+                _fib_levels = _d_fib.get("levels",{}) if isinstance(_d_fib,dict) else {}
+                if _fib_levels:
+                    st.markdown("**📐 Level Fibonacci**")
+                    for _fl, _fv in _fib_levels.items():
+                        _fc = "#26A69A" if (_live_price and _fv<=_live_price) else "#EF5350"
+                        st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:#8B949E'>{_fl}</span><span style='color:{_fc};font-weight:700'>Rp {_fv:,.0f}</span></div>", unsafe_allow_html=True)
+                if isinstance(_d_vp,dict) and _d_vp.get("poc"):
+                    st.markdown(f"**POC (Volume Profile):** Rp {_d_vp['poc']:,.0f}")
+                # Divergences
+                if _d_diverg:
+                    st.markdown("**🔀 Divergensi**")
+                    for _dv in _d_diverg[:5]:
+                        st.markdown(f"<div style='font-size:0.82rem;color:#FF9800'>● {_dv.get('type','')} {_dv.get('indicator','')}</div>", unsafe_allow_html=True)
+                # Pola Candlestick
+                if _d_candle:
+                    st.markdown("**🕯️ Pola Candlestick**")
+                    for _pat in _d_candle[:8]:
+                        _pn = _pat.get("pattern",""); _ps = _pat.get("signal","")
+                        _pc = "#26A69A" if "Bullish" in _ps else "#EF5350"
+                        st.markdown(f"<div style='font-size:0.82rem;color:{_pc}'>● {_pn} — {_ps}</div>", unsafe_allow_html=True)
+                # Wyckoff & MTF
+                if isinstance(_d_wyck,dict):
+                    st.markdown(f"**Wyckoff Phase:** {_d_wyck.get('phase','—')}")
+                if isinstance(_d_mtf,dict):
+                    st.markdown("**Multi-Timeframe:**")
+                    for _tf, _td in _d_mtf.items():
+                        if isinstance(_td,dict):
+                            _b = _td.get("bias","—")
+                            _c = "#26A69A" if "Bull" in str(_b) else "#EF5350"
+                            st.markdown(f"<span style='color:{_c}'>● {_tf.upper()}: {_b}</span>", unsafe_allow_html=True)
+
+            with _ptab4:
+                # Risk & Quant
+                _r1, _r2 = st.columns(2)
+                with _r1:
+                    st.markdown("**📊 Performance Metrics**")
+                    for _lbl, _key, _suf in [("Annual Return","annual_return","%"),("Sharpe Ratio","sharpe_ratio",""),("Sortino Ratio","sortino_ratio",""),("Max Drawdown","max_drawdown","%"),("Calmar Ratio","calmar_ratio","")]:
+                        _v = _d_ratios.get(_key)
+                        if _v is not None:
+                            _vc = "#26A69A" if float(_v)>=0 else "#EF5350"
+                            st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:#8B949E'>{_lbl}</span><span style='color:{_vc};font-weight:700'>{float(_v):.2f}{_suf}</span></div>", unsafe_allow_html=True)
+                with _r2:
+                    st.markdown("**📉 VaR & Kelly**")
+                    _var_hist = _d_var.get("historical",{}) if isinstance(_d_var,dict) else {}
+                    for _lbl, _key in [("VaR 95%","var_95"),("CVaR 95%","cvar_95")]:
+                        _v = _var_hist.get(_key)
+                        if _v is not None:
+                            st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:#8B949E'>{_lbl}</span><span style='color:#EF5350;font-weight:700'>{float(_v):.2f}%</span></div>", unsafe_allow_html=True)
+                    _kf = _d_kelly.get("kelly_fraction") if isinstance(_d_kelly,dict) else None
+                    if _kf is not None:
+                        st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0'><span style='color:#8B949E'>Kelly Fraction</span><span style='color:#2196F3;font-weight:700'>{float(_kf)*100:.1f}%</span></div>", unsafe_allow_html=True)
+                # Monte Carlo
+                st.markdown("---")
+                try:
+                    _mc_sim = _d_mc.get("simulations") if isinstance(_d_mc, dict) else None
+                    _mc_ok  = isinstance(_mc_sim, pd.DataFrame) and not _mc_sim.empty
+                    if _mc_ok:
+                        _fig_mc = plot_monte_carlo(_d_mc, _d_ticker)
+                        st.plotly_chart(_fig_mc, use_container_width=True, config={"displayModeBar":False})
+                        _mc_m  = _d_mc.get("percentile_50")
+                        _mc_bu = _d_mc.get("percentile_95")
+                        _mc_be = _d_mc.get("percentile_5")
+                        if _mc_m:
+                            st.caption(f"Bear: Rp {_mc_be:,.0f} · Median: Rp {_mc_m:,.0f} · Bull: Rp {_mc_bu:,.0f}")
+                    else:
+                        st.info("Data Monte Carlo tidak tersedia")
+                except Exception as _e:
+                    st.warning(f"Monte Carlo error: {_e}")
+
+            with _ptab5:
+                # Fundamental
+                _d_info2 = st.session_state.info
+                _d_fin2  = st.session_state.get("financials", {})
+                _d_met2  = get_key_metrics(_d_info2)
+                _f1, _f2 = st.columns(2)
+                with _f1:
+                    st.markdown("**📋 Data Perusahaan**")
+                    for _lbl, _key in [("Sektor","sector"),("Industri","industry"),("Market Cap","marketCap"),("Karyawan","fullTimeEmployees"),("Negara","country")]:
+                        _v = _d_info2.get(_key,"—")
+                        if _key == "marketCap" and _v and _v != "—":
+                            _v = f"Rp {int(_v)/1e12:.2f} T" if _v > 1e12 else f"Rp {int(_v)/1e9:.1f} B"
+                        st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:#8B949E'>{_lbl}</span><span style='color:#E8EAED'>{_v}</span></div>", unsafe_allow_html=True)
+                with _f2:
+                    st.markdown("**📊 Valuasi**")
+                    for _lbl, _key in [("P/E Ratio","trailingPE"),("PBV","priceToBook"),("EPS","trailingEps"),("Dividen Yield","dividendYield"),("ROE","returnOnEquity")]:
+                        _v = _d_info2.get(_key)
+                        if _v is not None:
+                            _vs = f"{float(_v):.2f}" if _key != "dividendYield" else f"{float(_v)*100:.2f}%"
+                            st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:#8B949E'>{_lbl}</span><span style='color:#E8EAED'>{_vs}</span></div>", unsafe_allow_html=True)
+
+            with _ptab6:
+                # AI Analysis
+                if st.session_state.ai_result:
+                    st.markdown(st.session_state.ai_result)
+                else:
+                    st.info("Klik **🤖 AI Analisis** di atas untuk generate analisis mendalam dari Claude AI.")
+                    if st.button("🤖 Generate AI Analisis Sekarang", type="primary", key="dlg_ai_gen"):
+                        st.session_state["_idx_pending_ticker"] = active_ticker
+                        st.session_state["_trigger_ai"] = True
+                        st.session_state["idx_open_popup"] = True
+                        st.rerun()
 
     # ── Tampilkan popup analisis otomatis ──
     if _active_ticker and st.session_state.get("idx_open_popup", False):
@@ -963,10 +1062,10 @@ with tabs[0]:
         """, unsafe_allow_html=True)
 
 
-# ════════════════════════════════════════════════════════════════════════════════
-# TAB 1: LIVE PRICE
-# ════════════════════════════════════════════════════════════════════════════════
-with tabs[1]:
+# ── Konten Live Price, Teknikal, SMC, Advanced TA, Risk, Fundamental, AI
+# ── dipindahkan ke dalam popup dialog saat saham diklik
+if False:  # placeholder — tidak dirender di main page
+    _dummy_ctx = True
     st.markdown('<div class="section-header">⚡ Live Price & Intraday</div>', unsafe_allow_html=True)
 
     if not live_mode:
@@ -1126,9 +1225,9 @@ with tabs[1]:
                     "intraday Finnhub, rekomendasi analis real-time, earnings, berita Finnhub, dan sentimen.")
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 1: TECHNICAL ANALYSIS
+# TAB 1: TECHNICAL ANALYSIS — masuk popup
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[2]:
+if False:
     st.markdown('<div class="section-header">📊 Analisis Teknikal</div>', unsafe_allow_html=True)
 
     # Chart
@@ -1211,9 +1310,9 @@ with tabs[2]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 2: SMART MONEY CONCEPTS
+# TAB 2: SMART MONEY CONCEPTS — masuk popup
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[3]:
+if False:
     st.markdown('<div class="section-header">🏦 Smart Money Concepts (SMC)</div>', unsafe_allow_html=True)
 
     # SMC Bias card
@@ -1308,9 +1407,9 @@ with tabs[3]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 3: ADVANCED TECHNICAL ANALYSIS
+# TAB 3: ADVANCED TECHNICAL ANALYSIS — masuk popup
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[4]:
+if False:
     st.markdown('<div class="section-header">📐 Advanced Technical Analysis</div>', unsafe_allow_html=True)
 
     adv_sub = st.tabs(["📐 Fibonacci", "📊 Volume Profile", "🔀 Divergence & Patterns", "⏱️ MTF & Wyckoff"])
@@ -1435,9 +1534,9 @@ with tabs[4]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 4: RISK & QUANTITATIVE
+# TAB 4: RISK & QUANTITATIVE — masuk popup
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[5]:
+if False:
     st.markdown('<div class="section-header">📉 Risk Management & Quantitative Analysis</div>', unsafe_allow_html=True)
 
     risk_sub = st.tabs(["📊 Performance", "🎲 Monte Carlo", "📉 VaR", "💰 Position Sizing"])
@@ -1583,9 +1682,9 @@ with tabs[5]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 5: FUNDAMENTAL ANALYSIS
+# TAB 5: FUNDAMENTAL ANALYSIS — masuk popup
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[6]:
+if False:
     st.markdown('<div class="section-header">💰 Analisis Fundamental</div>', unsafe_allow_html=True)
 
     # Fundamental score
@@ -1670,9 +1769,9 @@ with tabs[6]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 6: NEWS & SENTIMENT
+# TAB 3: BERITA & SENTIMEN
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[7]:
+with tabs[3]:
     st.markdown('<div class="section-header">📰 Berita & Analisis Sentimen</div>', unsafe_allow_html=True)
 
     if news:
@@ -1768,9 +1867,9 @@ with tabs[7]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 7: MACRO ECONOMY
+# TAB 2: MAKRO EKONOMI
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[8]:
+with tabs[2]:
     st.markdown('<div class="section-header">🌍 Analisis Makro & Mikro Ekonomi</div>', unsafe_allow_html=True)
 
     # Macro environment assessment
@@ -1906,9 +2005,9 @@ with tabs[8]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 8: AI ANALYSIS
+# TAB 8: AI ANALYSIS — masuk popup
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[9]:
+if False:
     st.markdown('<div class="section-header">🤖 Analisis AI (Powered by Claude)</div>', unsafe_allow_html=True)
 
     if st.session_state.ai_result:
@@ -1955,9 +2054,9 @@ with tabs[9]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 9: GLOBAL MARKET MAP
+# TAB 1: PASAR GLOBAL
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[10]:
+with tabs[1]:
     st.markdown('<div class="section-header">🗺️ Peta Pasar Global</div>', unsafe_allow_html=True)
 
     # Full market table
