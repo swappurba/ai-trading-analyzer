@@ -1124,12 +1124,103 @@ with tabs[0]:
     if not _active_ticker:
         st.markdown("""
         <div style="background:#0D1117;border:1px dashed #30363D;border-radius:12px;
-            padding:40px;text-align:center;margin-top:8px">
-            <div style="font-size:2rem;margin-bottom:10px">👆</div>
-            <div style="color:#C9D1D9;font-size:1.1rem;font-weight:600">Klik saham di atas untuk melihat analisis lengkap</div>
-            <div style="color:#8B949E;font-size:0.85rem;margin-top:6px">Popup analisis otomatis muncul — Teknikal · SMC · Fibonacci · Risk · Chart</div>
+            padding:20px 30px;text-align:center;margin-top:8px;margin-bottom:16px">
+            <div style="font-size:1.8rem;margin-bottom:6px">👆</div>
+            <div style="color:#C9D1D9;font-size:1rem;font-weight:600">Klik saham di atas untuk analisis lengkap</div>
         </div>
         """, unsafe_allow_html=True)
+
+    # ── MARKET OVERVIEW: Berita & Makro (selalu tampil di dashboard) ──
+    st.markdown("---")
+    st.markdown("### 🌐 Kondisi Pasar Saat Ini")
+    _ov1, _ov2 = st.columns([1.2, 1])
+
+    with _ov1:
+        # Berita Makro General
+        st.markdown("#### 📰 Berita Pasar Terkini")
+        try:
+            from modules.news_analysis import get_macro_news, aggregate_sentiment
+            _dash_news = get_macro_news()
+            if _dash_news:
+                _dash_agg = aggregate_sentiment(_dash_news)
+                _dagg_color = "#26A69A" if _dash_agg["score"] > 0 else "#EF5350"
+                st.markdown(
+                    f'<span style="background:rgba(38,166,154,0.15);border:1px solid {_dagg_color};'
+                    f'border-radius:6px;padding:3px 12px;color:{_dagg_color};font-weight:700;font-size:0.85rem">'
+                    f'Sentimen Pasar: {_dash_agg["label"]} &nbsp;|&nbsp; '
+                    f'🟢 {_dash_agg["bullish"]} Bullish &nbsp;🔴 {_dash_agg["bearish"]} Bearish</span>',
+                    unsafe_allow_html=True
+                )
+                st.markdown("")
+                for _dn in _dash_news[:6]:
+                    _dsl = _dn.get("sentiment", {}).get("label", "Neutral")
+                    _dic = "🟢" if _dsl == "Bullish" else ("🔴" if _dsl == "Bearish" else "⚪")
+                    _dtitle = (_dn.get("title_clean") or _dn.get("title", ""))[:90]
+                    _dsrc   = _dn.get("source", "")
+                    _durl   = _dn.get("url", "#")
+                    st.markdown(
+                        f'{_dic} **[{_dtitle}]({_durl})**  \n'
+                        f'<span style="color:#555;font-size:0.75rem">{_dsrc}</span>',
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.info("Memuat berita pasar...")
+        except Exception as _e:
+            st.caption(f"Berita tidak tersedia: {_e}")
+
+    with _ov2:
+        # Makro Ekonomi Summary
+        st.markdown("#### 🌍 Kondisi Makro Ekonomi")
+        try:
+            from modules.macro_analysis import get_macro_environment
+            _dash_macro = get_macro_environment(
+                st.session_state.get("markets", []),
+                st.session_state.get("commodities", []),
+                st.session_state.get("currencies", []),
+            )
+            if _dash_macro:
+                _menv = _dash_macro.get("environment", "N/A")
+                _menv_color = "#26A69A" if "Bullish" in str(_menv) or "Positif" in str(_menv) else (
+                    "#EF5350" if "Bearish" in str(_menv) or "Negatif" in str(_menv) else "#FF9800"
+                )
+                st.markdown(
+                    f'<div style="background:#161B22;border:1px solid {_menv_color};border-radius:8px;'
+                    f'padding:10px 14px;margin-bottom:10px">'
+                    f'<span style="color:{_menv_color};font-weight:700">🌍 {_menv}</span><br>'
+                    f'<span style="color:#8B949E;font-size:0.82rem">{_dash_macro.get("description","")[:120]}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+                _ops  = _dash_macro.get("opportunities", [])[:3]
+                _rsks = _dash_macro.get("risk_factors", [])[:3]
+                if _ops:
+                    st.markdown("**✅ Peluang:**")
+                    for _op in _ops:
+                        st.markdown(f"<span style='color:#26A69A;font-size:0.82rem'>▸ {_op}</span>", unsafe_allow_html=True)
+                if _rsks:
+                    st.markdown("**⚠️ Risiko:**")
+                    for _rk in _rsks:
+                        st.markdown(f"<span style='color:#EF5350;font-size:0.82rem'>▸ {_rk}</span>", unsafe_allow_html=True)
+
+                # Indeks global mini
+                _dash_markets = st.session_state.get("markets", [])
+                if _dash_markets:
+                    st.markdown("**🗺️ Pasar Global:**")
+                    _mg_cols = st.columns(2)
+                    for _mi, _mkt in enumerate(_dash_markets[:6]):
+                        with _mg_cols[_mi % 2]:
+                            _mc = "#26A69A" if (_mkt.get("change", 0) or 0) >= 0 else "#EF5350"
+                            _ma = "▲" if (_mkt.get("change", 0) or 0) >= 0 else "▼"
+                            st.markdown(
+                                f'<div style="font-size:0.78rem;padding:2px 0">'
+                                f'<span style="color:#8B949E">{_mkt.get("name","")[:12]}</span> '
+                                f'<span style="color:{_mc};font-weight:700">{_ma}{abs(_mkt.get("change",0) or 0):.2f}%</span>'
+                                f'</div>', unsafe_allow_html=True
+                            )
+            else:
+                st.caption("Data makro memuat...")
+        except Exception as _e:
+            st.caption(f"Makro tidak tersedia: {_e}")
 
 
 # ── Konten Live Price, Teknikal, SMC, Advanced TA, Risk, Fundamental, AI
