@@ -25,8 +25,11 @@ except ImportError:
 # ── Imports ───────────────────────────────────────────────────────────────────
 from config import (
     POPULAR_IDX_STOCKS, POPULAR_GLOBAL_STOCKS, TIMEFRAMES, INTERVALS,
-    SECTOR_MAP, INDONESIAN_INDICES, GLOBAL_INDICES, COMMODITIES, CURRENCIES,
-    fetch_all_idx_stocks,
+    INDONESIAN_INDICES, GLOBAL_INDICES, COMMODITIES, CURRENCIES,
+)
+from modules.idx_stocks import (
+    get_all_idx_stocks, get_all_tickers, get_sector_map,
+    get_ticker_sector_map, get_stock_info_map, IDX_SECTORS, HARDCODED_IDX,
 )
 from modules.data_fetcher import (
     get_stock_data, get_stock_info, get_financials,
@@ -544,27 +547,33 @@ with tabs[0]:
     if AUTOREFRESH_AVAILABLE:
         st_autorefresh(interval=60_000, key="idx_live_refresh")
 
-    # ── Fetch & cache harga IDX ──
+    # ── Fetch & cache daftar saham lengkap dari IDX ──
     _now_ts = time.time()
     _cache_stale = (_now_ts - st.session_state.idx_prices_ts) > 55
-    _ticker_sector: dict = {}
-    for _sec, _tks in SECTOR_MAP.items():
-        for _tk in _tks:
-            _ticker_sector[_tk] = _sec
 
-    # ── Top control bar (pengganti sidebar) ──
+    if "idx_stock_data" not in st.session_state or not st.session_state.get("idx_stock_data"):
+        with st.spinner("📋 Memuat seluruh daftar saham BEI..."):
+            st.session_state.idx_stock_data = get_all_idx_stocks()
+
+    _idx_stocks_meta  = st.session_state.idx_stock_data   # [{code,name,ticker,sector}]
+    _idx_stock_list   = [s["ticker"] for s in _idx_stocks_meta]
+    _ticker_sector    = {s["ticker"]: s["sector"] for s in _idx_stocks_meta}
+    _ticker_name      = {s["ticker"]: s.get("name", s["code"]) for s in _idx_stocks_meta}
+    _dynamic_sectors  = sorted(set(s["sector"] for s in _idx_stocks_meta))
+
+    # ── Top control bar ──
     _ts_lbl = datetime.fromtimestamp(st.session_state.idx_prices_ts).strftime("%H:%M:%S") if st.session_state.idx_prices_ts else "—"
-    _hc1, _hc2, _hc3, _hc4, _hc5, _hc6 = st.columns([3, 1.5, 1, 1, 1, 1])
+    _hc1, _hc2, _hc3, _hc4, _hc5, _hc6 = st.columns([3, 1.8, 1, 1, 1, 1])
     with _hc1:
         st.markdown(f"""
         <div style="display:flex;align-items:center;gap:10px">
           <span style="font-size:1.4rem;font-weight:800">🇮🇩 IDX Market Board</span>
-          <span style="background:#26A69A;color:#000;font-size:0.65rem;font-weight:800;padding:2px 7px;border-radius:10px;animation:pulse 1.5s infinite">● LIVE</span>
+          <span style="background:#26A69A;color:#000;font-size:0.65rem;font-weight:800;padding:2px 7px;border-radius:10px">● LIVE</span>
+          <span style="color:#555;font-size:0.72rem">{len(_idx_stock_list):,} saham · Update {_ts_lbl}</span>
         </div>
-        <div style="color:#555;font-size:0.75rem">Yahoo Finance v8 · Update {_ts_lbl} · Auto-refresh 60s</div>
         """, unsafe_allow_html=True)
     with _hc2:
-        _filter_sector = st.selectbox("", ["Semua"] + list(SECTOR_MAP.keys()), key="idx_sector_filter", label_visibility="collapsed")
+        _filter_sector = st.selectbox("", ["Semua"] + _dynamic_sectors, key="idx_sector_filter", label_visibility="collapsed")
     with _hc3:
         _period_sel = st.selectbox("", list(TIMEFRAMES.keys()), index=3, key="top_period", label_visibility="collapsed")
     with _hc4:
@@ -572,8 +581,7 @@ with tabs[0]:
     with _hc5:
         _refresh_dash = st.button("🔄 Refresh", key="idx_refresh", use_container_width=True)
     with _hc6:
-        # Search box
-        _search_input = st.text_input("", placeholder="Cari: BBCA", key="idx_search", label_visibility="collapsed").upper().strip()
+        _search_input = st.text_input("", placeholder="Cari kode...", key="idx_search", label_visibility="collapsed").upper().strip()
 
     # Update global period/interval dari top bar
     _period  = TIMEFRAMES[_period_sel]
@@ -581,15 +589,9 @@ with tabs[0]:
     st.session_state["_top_period"]   = _period
     st.session_state["_top_interval"] = _iv
 
-    # Ambil daftar saham lengkap dari API IDX (cache di session)
-    if "idx_full_list" not in st.session_state or not st.session_state.idx_full_list:
-        with st.spinner("📋 Memuat daftar lengkap saham IDX..."):
-            st.session_state.idx_full_list = fetch_all_idx_stocks()
-    _idx_stock_list = st.session_state.idx_full_list or POPULAR_IDX_STOCKS
-
     if _refresh_dash or _cache_stale or not st.session_state.idx_prices_cache:
         with st.spinner(f"⏳ Mengambil harga {len(_idx_stock_list):,} saham IDX..."):
-            _all_prices = batch_live_prices(_idx_stock_list, max_workers=20)
+            _all_prices = batch_live_prices(_idx_stock_list, max_workers=25)
         st.session_state.idx_prices_cache = _all_prices
         st.session_state.idx_prices_ts = time.time()
     else:
@@ -599,16 +601,22 @@ with tabs[0]:
     _all_stocks = []
     for _tk in _idx_stock_list:
         _pd2 = _all_prices.get(_tk, {})
+        _code = _tk.replace(".JK","")
         _all_stocks.append({
-            "ticker": _tk, "code": _tk.replace(".JK",""),
+            "ticker": _tk,
+            "code":   _code,
+            "name":   _ticker_name.get(_tk, _code),
             "sector": _ticker_sector.get(_tk, "Lainnya"),
-            "price": _pd2.get("price"), "change": _pd2.get("change",0) or 0,
-            "pct": _pd2.get("pct_change",0) or 0, "volume": _pd2.get("volume",0) or 0,
-            "high": _pd2.get("high"), "low": _pd2.get("low"),
+            "price":  _pd2.get("price"),
+            "change": _pd2.get("change", 0) or 0,
+            "pct":    _pd2.get("pct_change", 0) or 0,
+            "volume": _pd2.get("volume", 0) or 0,
+            "high":   _pd2.get("high"),
+            "low":    _pd2.get("low"),
         })
     _display_list = [s for s in _all_stocks
-                     if (_filter_sector=="Semua" or s["sector"]==_filter_sector)
-                     and (_search_input=="" or _search_input in s["code"])]
+                     if (_filter_sector == "Semua" or s["sector"] == _filter_sector)
+                     and (_search_input == "" or _search_input in s["code"] or _search_input in s["name"].upper())]
     _loaded_all   = [s for s in _display_list if s["price"] is not None]
 
     # ── Market stats bar ──
@@ -2273,7 +2281,7 @@ with tabs[1]:
     with st.spinner("Menghitung performa sektor..."):
         from modules.data_fetcher import get_sector_performance
         sector_data = []
-        for sector_name, tickers in SECTOR_MAP.items():
+        for sector_name, tickers in get_sector_map().items():
             df_sect = get_sector_performance(tickers[:3], period="1mo")
             if not df_sect.empty:
                 avg_ret = df_sect["return"].mean()
