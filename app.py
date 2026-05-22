@@ -55,6 +55,7 @@ from modules.macro_analysis import (
     get_bi_rate_context,
 )
 from modules.ai_analysis import get_ai_analysis
+from modules.astronacci import run_astronacci_analysis, plot_astronacci_chart
 from modules.smc_analysis import (
     find_order_blocks, find_fvg, find_bos_choch,
     find_liquidity_zones, get_premium_discount,
@@ -189,6 +190,9 @@ def _run_analysis(ticker: str, period: str, iv: str):
         candle_pat  = detect_candlestick_patterns(df)
         vp          = calculate_volume_profile(df)
 
+    with st.spinner("🌀 Menghitung Astronacci: Fibonacci + Elliott Wave + Cycle..."):
+        astronacci = run_astronacci_analysis(df)
+
     with st.spinner("📉 Menghitung risk metrics..."):
         returns  = calculate_returns(df)
         ratios   = calculate_performance_ratios(returns)
@@ -225,6 +229,7 @@ def _run_analysis(ticker: str, period: str, iv: str):
     st.session_state.divergences  = divergences
     st.session_state.candle_pat   = candle_pat
     st.session_state.vp           = vp
+    st.session_state.astronacci   = astronacci
     st.session_state.ratios       = ratios
     st.session_state.var_data     = var_data
     st.session_state.mc_data      = mc_data
@@ -808,10 +813,11 @@ with tabs[0]:
             """, unsafe_allow_html=True)
 
             # ── SUB-TABS ANALISIS LENGKAP ──
-            _ptab1, _ptab2, _ptab3, _ptab4, _ptab5, _ptab6, _ptab7, _ptab8 = st.tabs([
+            _ptab1, _ptab2, _ptab3, _ptab_astro, _ptab4, _ptab5, _ptab6, _ptab7, _ptab8 = st.tabs([
                 "📈 Chart & Teknikal",
                 "🏦 SMC & Struktur",
                 "📐 Advanced TA",
+                "🌀 Astronacci",
                 "📉 Risk & Quant",
                 "💰 Fundamental",
                 "📰 Berita & Sentimen",
@@ -980,6 +986,221 @@ with tabs[0]:
                             _b = _td.get("bias","—")
                             _c = "#26A69A" if "Bull" in str(_b) else "#EF5350"
                             st.markdown(f"<span style='color:{_c}'>● {_tf.upper()}: {_b}</span>", unsafe_allow_html=True)
+
+            with _ptab_astro:
+                # ── ASTRONACCI ANALYSIS TAB ──
+                _d_astro = st.session_state.get("astronacci", {})
+                if not _d_astro:
+                    st.info("Data Astronacci belum tersedia. Klik Refresh untuk memuat.")
+                else:
+                    _a_fib    = _d_astro.get("fibonacci", {})
+                    _a_ew     = _d_astro.get("elliott", {})
+                    _a_cyc    = _d_astro.get("cycles", {})
+                    _a_tz     = _d_astro.get("time_zones", {})
+                    _a_sig    = _d_astro.get("signal", {})
+                    _a_price  = _d_astro.get("current_price", _live_price or 0)
+
+                    # ── Overall Signal ──
+                    _asig_overall = _a_sig.get("overall", "NEUTRAL")
+                    _asig_color   = _a_sig.get("color", "#FF9800")
+                    _asig_score   = _a_sig.get("score", 0)
+                    st.markdown(f"""
+                    <div style="background:rgba(30,30,30,0.8);border:2px solid {_asig_color};
+                         border-radius:12px;padding:16px 20px;margin-bottom:16px;text-align:center">
+                        <div style="color:#8B949E;font-size:0.8rem;font-weight:600;letter-spacing:1px">
+                            🌀 ASTRONACCI SIGNAL
+                        </div>
+                        <div style="color:{_asig_color};font-size:1.8rem;font-weight:900;margin:4px 0">
+                            {_asig_overall}
+                        </div>
+                        <div style="color:#555;font-size:0.78rem">
+                            Score: {_asig_score:+d} | Harga: Rp {_a_price:,.0f}
+                        </div>
+                    </div>""", unsafe_allow_html=True)
+
+                    # ── Signals list ──
+                    _asig_list = _a_sig.get("signals", [])
+                    if _asig_list:
+                        for _asgl in _asig_list:
+                            st.markdown(f"<div style='font-size:0.85rem;padding:4px 0;color:#C9D1D9'>{_asgl}</div>", unsafe_allow_html=True)
+                        st.markdown("---")
+
+                    # ── Chart ──
+                    try:
+                        _fig_astro = plot_astronacci_chart(
+                            _d_df, _d_ticker, _a_fib, _a_ew, _a_cyc
+                        )
+                        st.plotly_chart(_fig_astro, use_container_width=True, config={"displayModeBar": False})
+                    except Exception as _ae:
+                        st.warning(f"Chart Astronacci error: {_ae}")
+
+                    # ── 3 kolom detail ──
+                    _acol1, _acol2, _acol3 = st.columns(3)
+
+                    with _acol1:
+                        st.markdown("""<div style="background:#161B22;border:1px solid #30363D;
+                            border-radius:8px;padding:12px 14px">
+                            <div style="font-weight:700;color:#FFD700;margin-bottom:10px;
+                                border-bottom:1px solid #30363D;padding-bottom:6px">
+                            📐 Fibonacci Levels
+                            </div>""", unsafe_allow_html=True)
+
+                        _zone = _a_fib.get("zone","—")
+                        _dir  = _a_fib.get("direction","—").upper()
+                        _zc   = "#26A69A" if "Discount" in _zone else "#EF5350"
+                        st.markdown(f"<div style='font-size:0.78rem;color:{_zc};font-weight:700;margin-bottom:6px'>{_zone} · {_dir}</div>", unsafe_allow_html=True)
+
+                        _fib_retrace = _a_fib.get("retracement", {})
+                        for _lbl, _fval in _fib_retrace.items():
+                            _fc = "#26A69A" if (_a_price and _fval <= _a_price) else "#EF5350"
+                            _bold = "font-weight:800;" if _lbl in ("61.8%","38.2%","50.0%") else ""
+                            _marker = " ★" if _lbl == "61.8%" else ""
+                            st.markdown(
+                                f"<div style='display:flex;justify-content:space-between;padding:3px 0;"
+                                f"border-bottom:1px solid #21262D'>"
+                                f"<span style='color:#8B949E;font-size:0.78rem;{_bold}'>{_lbl}{_marker}</span>"
+                                f"<span style='color:{_fc};font-size:0.78rem;{_bold}'>Rp {_fval:,.0f}</span>"
+                                f"</div>", unsafe_allow_html=True)
+
+                        _fib_ext = _a_fib.get("extension", {})
+                        st.markdown("<div style='margin-top:8px;font-size:0.75rem;color:#8B949E;font-weight:700'>Extension Targets:</div>", unsafe_allow_html=True)
+                        for _lbl, _fval in _fib_ext.items():
+                            if _lbl in ("127.2%","161.8%","261.8%"):
+                                _fc2 = "#26A69A"
+                                _bold2 = "font-weight:700;" if _lbl == "161.8%" else ""
+                                _star2 = " 🎯" if _lbl == "161.8%" else ""
+                                st.markdown(
+                                    f"<div style='display:flex;justify-content:space-between;padding:2px 0'>"
+                                    f"<span style='color:#555;font-size:0.75rem;{_bold2}'>Ext {_lbl}{_star2}</span>"
+                                    f"<span style='color:{_fc2};font-size:0.75rem;{_bold2}'>Rp {_fval:,.0f}</span>"
+                                    f"</div>", unsafe_allow_html=True)
+
+                        _sup = _a_fib.get("nearest_support")
+                        _res = _a_fib.get("nearest_resistance")
+                        if _sup or _res:
+                            st.markdown("<div style='margin-top:8px;font-size:0.75rem;color:#8B949E;font-weight:700'>Nearest Levels:</div>", unsafe_allow_html=True)
+                            if _res:
+                                st.markdown(f"<div style='font-size:0.78rem;color:#EF5350'>R: Rp {_res:,.0f}</div>", unsafe_allow_html=True)
+                            if _a_price:
+                                st.markdown(f"<div style='font-size:0.78rem;color:#58A6FF;font-weight:700'>● Rp {_a_price:,.0f}</div>", unsafe_allow_html=True)
+                            if _sup:
+                                st.markdown(f"<div style='font-size:0.78rem;color:#26A69A'>S: Rp {_sup:,.0f}</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+                    with _acol2:
+                        st.markdown("""<div style="background:#161B22;border:1px solid #30363D;
+                            border-radius:8px;padding:12px 14px">
+                            <div style="font-weight:700;color:#9C27B0;margin-bottom:10px;
+                                border-bottom:1px solid #30363D;padding-bottom:6px">
+                            🌊 Elliott Wave Count
+                            </div>""", unsafe_allow_html=True)
+
+                        _ew_pattern = _a_ew.get("pattern","—")
+                        _ew_outlook = _a_ew.get("outlook","—")
+                        _ew_oc = "#26A69A" if _ew_outlook=="Bullish" else ("#EF5350" if _ew_outlook=="Bearish" else "#FF9800")
+                        st.markdown(f"<div style='font-size:0.82rem;color:#C9D1D9;margin-bottom:4px'><b>{_ew_pattern}</b></div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:0.82rem;color:{_ew_oc};font-weight:700;margin-bottom:8px'>Outlook: {_ew_outlook}</div>", unsafe_allow_html=True)
+
+                        _ew_waves = _a_ew.get("waves", [])
+                        if _ew_waves:
+                            st.markdown("<div style='font-size:0.75rem;color:#8B949E;font-weight:700;margin-bottom:4px'>Wave Levels:</div>", unsafe_allow_html=True)
+                            for _wv in _ew_waves:
+                                _wlabel = _wv.get("label","")
+                                _wprice = _wv.get("price", 0)
+                                _wc = "#FFD700" if any(x in _wlabel for x in ("1","3","5","A","C")) else "#FF9800"
+                                st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:{_wc};font-size:0.78rem'>{_wlabel}</span><span style='color:#C9D1D9;font-size:0.78rem'>Rp {_wprice:,.0f}</span></div>", unsafe_allow_html=True)
+
+                        _ew_pos = _a_ew.get("current_position","—")
+                        _ew_next = _a_ew.get("next_wave","—")
+                        _ew_analysis = _a_ew.get("wave_analysis","")
+                        st.markdown(f"<div style='margin-top:8px;font-size:0.75rem;color:#8B949E'>{_ew_pos}</div>", unsafe_allow_html=True)
+                        if _ew_next:
+                            st.markdown(f"<div style='font-size:0.8rem;color:#2196F3;font-weight:700;margin-top:4px'>Berikutnya: {_ew_next}</div>", unsafe_allow_html=True)
+                        if _ew_analysis:
+                            st.markdown(f"<div style='font-size:0.72rem;color:#555;margin-top:4px'>{_ew_analysis}</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+                    with _acol3:
+                        st.markdown("""<div style="background:#161B22;border:1px solid #30363D;
+                            border-radius:8px;padding:12px 14px">
+                            <div style="font-weight:700;color:#2196F3;margin-bottom:10px;
+                                border-bottom:1px solid #30363D;padding-bottom:6px">
+                            ⏰ Astronacci Cycle
+                            </div>""", unsafe_allow_html=True)
+
+                        _cyc_pivot = _a_cyc.get("pivot_type","—")
+                        _cyc_price = _a_cyc.get("pivot_price",0)
+                        _cyc_date  = _a_cyc.get("pivot_date")
+                        _cyc_date_str = str(_cyc_date)[:10] if _cyc_date else "—"
+                        st.markdown(f"<div style='font-size:0.78rem;color:#C9D1D9;margin-bottom:6px'>Pivot: <b>{_cyc_pivot}</b> @ Rp {_cyc_price:,.0f}<br><span style='color:#555'>{_cyc_date_str}</span></div>", unsafe_allow_html=True)
+
+                        _cyc_data = _a_cyc.get("cycles", {})
+                        _upcoming = _a_cyc.get("upcoming", {})
+                        _next_cyc = _a_cyc.get("next_cycle")
+                        if _next_cyc:
+                            _nc_fib, _nc_data = _next_cyc
+                            _nc_left = _nc_data.get("bars_remaining", 0)
+                            st.markdown(
+                                f"<div style='background:rgba(255,152,0,0.1);border:1px solid #FF9800;"
+                                f"border-radius:6px;padding:6px 10px;margin-bottom:8px;"
+                                f"font-size:0.8rem;color:#FF9800'>"
+                                f"⚠️ Siklus F<b>{_nc_fib}</b> — {_nc_left} bar lagi</div>",
+                                unsafe_allow_html=True)
+
+                        st.markdown("<div style='font-size:0.75rem;color:#8B949E;font-weight:700;margin-bottom:4px'>Siklus Fibonacci:</div>", unsafe_allow_html=True)
+                        for _fn, _cd in list(_cyc_data.items())[:8]:
+                            _passed = _cd.get("passed", False)
+                            _fc3 = "#555" if _passed else "#2196F3"
+                            _status = "✓" if _passed else f"+{_cd.get('bars_remaining','?')}bar"
+                            st.markdown(
+                                f"<div style='display:flex;justify-content:space-between;padding:2px 0'>"
+                                f"<span style='color:{_fc3};font-size:0.75rem'>F{_fn}</span>"
+                                f"<span style='color:{_fc3};font-size:0.75rem'>{_status}</span>"
+                                f"</div>", unsafe_allow_html=True)
+
+                        # Time Zones
+                        _tz_next = _a_tz.get("next_zone")
+                        if _tz_next:
+                            _tz_bars = _tz_next.get("bars_remaining", 0)
+                            _tz_fib  = _tz_next.get("fib", 0)
+                            st.markdown(
+                                f"<div style='margin-top:8px;font-size:0.78rem;color:#9C27B0;"
+                                f"font-weight:700'>📅 Time Zone F{_tz_fib} dalam {_tz_bars} bar</div>",
+                                unsafe_allow_html=True)
+
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+                    # ── Astronacci Summary Box ──
+                    st.markdown("---")
+                    _sw_high = _a_fib.get("swing_high", 0)
+                    _sw_low  = _a_fib.get("swing_low", 0)
+                    _golden_tgt = _a_fib.get("golden_target", 0)
+                    _golden_ext = _a_fib.get("golden_ext_161", 0)
+                    st.markdown(f"""
+                    <div style="background:#161B22;border:1px solid #FFD700;border-radius:10px;padding:14px 18px">
+                        <div style="color:#FFD700;font-weight:800;font-size:0.95rem;margin-bottom:10px">
+                            🌀 Astronacci Summary — {_d_ticker}
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
+                            <div style="text-align:center;background:#0D1117;border-radius:6px;padding:8px">
+                                <div style="color:#555;font-size:0.7rem">Swing High</div>
+                                <div style="color:#EF5350;font-weight:700">Rp {_sw_high:,.0f}</div>
+                            </div>
+                            <div style="text-align:center;background:#0D1117;border-radius:6px;padding:8px">
+                                <div style="color:#555;font-size:0.7rem">Swing Low</div>
+                                <div style="color:#26A69A;font-weight:700">Rp {_sw_low:,.0f}</div>
+                            </div>
+                            <div style="text-align:center;background:#0D1117;border-radius:6px;padding:8px">
+                                <div style="color:#555;font-size:0.7rem">Golden 61.8% Support</div>
+                                <div style="color:#FF9800;font-weight:700">Rp {_a_fib.get('golden_support',0):,.0f}</div>
+                            </div>
+                            <div style="text-align:center;background:#0D1117;border-radius:6px;padding:8px">
+                                <div style="color:#555;font-size:0.7rem">Target 161.8% 🎯</div>
+                                <div style="color:#00E676;font-weight:700">Rp {_golden_ext:,.0f}</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
             with _ptab4:
                 # Risk & Quant
