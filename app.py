@@ -524,8 +524,6 @@ kelly       = st.session_state.get("kelly", {})
 tabs = st.tabs([
     "🇮🇩 IDX Dashboard",
     "🗺️ Pasar Global",
-    "🌍 Makro Ekonomi",
-    "📰 Berita & Sentimen",
 ])
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -802,12 +800,14 @@ with tabs[0]:
             """, unsafe_allow_html=True)
 
             # ── SUB-TABS ANALISIS LENGKAP ──
-            _ptab1, _ptab2, _ptab3, _ptab4, _ptab5, _ptab6 = st.tabs([
+            _ptab1, _ptab2, _ptab3, _ptab4, _ptab5, _ptab6, _ptab7, _ptab8 = st.tabs([
                 "📈 Chart & Teknikal",
                 "🏦 SMC & Struktur",
                 "📐 Advanced TA",
                 "📉 Risk & Quant",
                 "💰 Fundamental",
+                "📰 Berita & Sentimen",
+                "🌍 Makro Ekonomi",
                 "🤖 AI Analysis",
             ])
 
@@ -1033,11 +1033,81 @@ with tabs[0]:
                             st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:#8B949E'>{_lbl}</span><span style='color:#E8EAED'>{_vs}</span></div>", unsafe_allow_html=True)
 
             with _ptab6:
+                # Berita & Sentimen
+                _pop_news = st.session_state.get("news", [])
+                if _pop_news:
+                    from modules.news_analysis import aggregate_sentiment
+                    _pagg = aggregate_sentiment(_pop_news)
+                    _pn1, _pn2, _pn3, _pn4 = st.columns(4)
+                    _pn1.metric("Sentimen", _pagg["label"])
+                    _pn2.metric("🟢 Bullish", _pagg["bullish"])
+                    _pn3.metric("🔴 Bearish", _pagg["bearish"])
+                    _pn4.metric("⚪ Neutral",  _pagg["neutral"])
+                    _ptot = _pagg["total"]
+                    if _ptot > 0:
+                        _pbull = _pagg["bullish"] / _ptot * 100
+                        _pbear = _pagg["bearish"] / _ptot * 100
+                        st.markdown(f"""<div style="background:#333;border-radius:6px;overflow:hidden;height:16px;margin:8px 0">
+                            <div style="display:inline-block;background:#26A69A;width:{_pbull:.0f}%;height:100%"></div>
+                            <div style="display:inline-block;background:#555;width:{100-_pbull-_pbear:.0f}%;height:100%"></div>
+                            <div style="display:inline-block;background:#EF5350;width:{_pbear:.0f}%;height:100%"></div>
+                        </div>""", unsafe_allow_html=True)
+                    st.markdown("---")
+                    _pnews_tabs = st.tabs([f"🟢 Bullish ({_pagg['bullish']})", f"🔴 Bearish ({_pagg['bearish']})", f"📋 Semua ({_ptot})"])
+                    with _pnews_tabs[0]:
+                        for _na in [n for n in _pop_news if n.get("sentiment",{}).get("label")=="Bullish"][:8]:
+                            st.markdown(f"**[{_na.get('title','')}]({_na.get('url','#')})** — *{_na.get('source','')}*")
+                    with _pnews_tabs[1]:
+                        for _na in [n for n in _pop_news if n.get("sentiment",{}).get("label")=="Bearish"][:8]:
+                            st.markdown(f"**[{_na.get('title','')}]({_na.get('url','#')})** — *{_na.get('source','')}*")
+                    with _pnews_tabs[2]:
+                        for _na in _pop_news[:15]:
+                            _sl = _na.get("sentiment",{}).get("label","—")
+                            _sc = "🟢" if _sl=="Bullish" else ("🔴" if _sl=="Bearish" else "⚪")
+                            st.markdown(f"{_sc} **[{_na.get('title','')}]({_na.get('url','#')})** — *{_na.get('source','')}*")
+                else:
+                    st.info("Belum ada data berita. Analisis saham terlebih dahulu.")
+
+            with _ptab7:
+                # Makro Ekonomi
+                _pop_macro = st.session_state.get("macro_env", {})
+                if _pop_macro:
+                    _pm1, _pm2 = st.columns(2)
+                    with _pm1:
+                        st.markdown("**🏦 Kondisi Makro**")
+                        for _mk, _mv in list(_pop_macro.items())[:8]:
+                            if isinstance(_mv, (int, float, str)):
+                                st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:#8B949E;font-size:0.82rem'>{_mk}</span><span style='color:#E8EAED;font-size:0.82rem'>{_mv}</span></div>", unsafe_allow_html=True)
+                    with _pm2:
+                        st.markdown("**📊 Indikator Ekonomi**")
+                        for _mk, _mv in list(_pop_macro.items())[8:16]:
+                            if isinstance(_mv, (int, float, str)):
+                                st.markdown(f"<div style='display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262D'><span style='color:#8B949E;font-size:0.82rem'>{_mk}</span><span style='color:#E8EAED;font-size:0.82rem'>{_mv}</span></div>", unsafe_allow_html=True)
+                else:
+                    st.info("Belum ada data makro. Analisis saham terlebih dahulu.")
+                # Market summary
+                _pop_markets = st.session_state.get("markets", [])
+                if _pop_markets:
+                    st.markdown("---")
+                    st.markdown("**🌐 Pasar Global**")
+                    _pm_cols = st.columns(4)
+                    for _i, _mkt in enumerate(_pop_markets[:8]):
+                        with _pm_cols[_i % 4]:
+                            _mchg = _mkt.get("change", 0) or 0
+                            _mc   = "#26A69A" if _mchg >= 0 else "#EF5350"
+                            _marr = "▲" if _mchg >= 0 else "▼"
+                            st.markdown(f"""<div style="background:#161B22;border:1px solid #30363D;border-radius:6px;padding:8px;margin:3px 0;text-align:center">
+                                <div style="color:#8B949E;font-size:0.75rem">{_mkt.get('name','')}</div>
+                                <div style="color:#E8EAED;font-weight:700">{_mkt.get('price','—')}</div>
+                                <div style="color:{_mc};font-size:0.8rem">{_marr}{abs(_mchg):.2f}%</div>
+                            </div>""", unsafe_allow_html=True)
+
+            with _ptab8:
                 # AI Analysis
                 if st.session_state.ai_result:
                     st.markdown(st.session_state.ai_result)
                 else:
-                    st.info("Klik **🤖 AI Analisis** di atas untuk generate analisis mendalam dari Claude AI.")
+                    st.info("Klik tombol di bawah untuk generate analisis mendalam dari Claude AI.")
                     if st.button("🤖 Generate AI Analisis Sekarang", type="primary", key="dlg_ai_gen"):
                         st.session_state["_idx_pending_ticker"] = active_ticker
                         st.session_state["_trigger_ai"] = True
@@ -1769,9 +1839,9 @@ if False:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 3: BERITA & SENTIMEN
+# TAB 3: BERITA & SENTIMEN — masuk popup
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[3]:
+if False:
     st.markdown('<div class="section-header">📰 Berita & Analisis Sentimen</div>', unsafe_allow_html=True)
 
     if news:
@@ -1867,9 +1937,9 @@ with tabs[3]:
 
 
 # ════════════════════════════════════════════════════════════════════════════════
-# TAB 2: MAKRO EKONOMI
+# TAB 2: MAKRO EKONOMI — masuk popup
 # ════════════════════════════════════════════════════════════════════════════════
-with tabs[2]:
+if False:
     st.markdown('<div class="section-header">🌍 Analisis Makro & Mikro Ekonomi</div>', unsafe_allow_html=True)
 
     # Macro environment assessment
